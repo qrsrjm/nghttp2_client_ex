@@ -30,6 +30,10 @@
 #include "nghttp2_session.h"
 #include "nghttp2_helper.h"
 
+#ifndef _U_
+#define _U_ __attribute__((unused))
+#endif
+
 /* Maximum distance between any two stream's cycle in the same
    prirority queue.  Imagine stream A's cycle is A, and stream B's
    cycle is B, and A < B.  The cycle is unsigned 32 bit integer, it

@@ -33,6 +33,10 @@
 #include "nghttp2_net.h"
 #include "nghttp2_priority_spec.h"
 
+#ifndef _U_
+#define _U_ __attribute__((unused))
+#endif
+
 void nghttp2_frame_pack_frame_hd(uint8_t *buf, const nghttp2_frame_hd *hd) {
   nghttp2_put_uint32be(&buf[0], (uint32_t)(hd->length << 8));
   buf[3] = hd->type;

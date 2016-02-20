@@ -36,6 +36,10 @@
 #include "nghttp2_http.h"
 #include "nghttp2_pq.h"
 
+#ifndef _U_
+#define _U_ __attribute__((unused))
+#endif
+
 /*
  * Returns non-zero if the number of outgoing opened streams is larger
  * than or equal to

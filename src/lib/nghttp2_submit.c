@@ -32,6 +32,10 @@
 #include "nghttp2_helper.h"
 #include "nghttp2_priority_spec.h"
 
+#ifndef _U_
+#define _U_ __attribute__((unused))
+#endif
+
 /*
  * Detects the dependency error, that is stream attempted to depend on
  * itself.  If |stream_id| is -1, we use session->next_stream_id as

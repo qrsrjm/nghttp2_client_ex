@@ -35,11 +35,10 @@ SET(SRCS
 SET(HDRS
 )
 
-
 # ------------------------------------------------------------------------------
 # build
 # ------------------------------------------------------------------------------
 add_executable(nghttp2_client_ex_cmd ${HDRS} ${SRCS})
 add_dependencies(nghttp2_client_ex_cmd nghttp2)
 SET_TARGET_PROPERTIES(nghttp2_client_ex_cmd PROPERTIES OUTPUT_NAME "nghttp2_client_ex")
-target_link_libraries(nghttp2_client_ex_cmd ${CMAKE_BINARY_DIR}/src/core/libnghttp2.a ${LIBRARIES})
+target_link_libraries(nghttp2_client_ex_cmd ${CMAKE_BINARY_DIR}/src/lib/libnghttp2.a ${LIBRARIES})

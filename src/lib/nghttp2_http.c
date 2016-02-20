@@ -31,6 +31,10 @@
 #include "nghttp2_hd.h"
 #include "nghttp2_helper.h"
 
+#ifndef _U_
+#define _U_ __attribute__((unused))
+#endif
+
 static uint8_t downcase(uint8_t c) {
   return 'A' <= c && c <= 'Z' ? (uint8_t)(c - 'A' + 'a') : c;
 }

@@ -31,6 +31,10 @@
 #include "nghttp2_helper.h"
 #include "nghttp2_int.h"
 
+#ifndef _U_
+#define _U_ __attribute__((unused))
+#endif
+
 /* Make scalar initialization form of nghttp2_hd_entry */
 #define MAKE_STATIC_ENT(N, V, T, H)                                            \
   {                                                                            \
