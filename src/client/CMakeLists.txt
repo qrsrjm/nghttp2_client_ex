@@ -18,6 +18,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}
 #${CMAKE_CURRENT_BINARY_DIR}
     ../../include
     ../lib/
+    ../../ext
 )
 
 #add_definitions(-std=c++0x)
@@ -26,7 +27,8 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}
 # Source files
 # ------------------------------------------------------------------------------
 SET(SRCS
-  nghttp2_client_ex.cc
+    ../../ext/http_parser/http_parser.cc
+    nghttp2_client_ex.cc
 )
 
 # ------------------------------------------------------------------------------
