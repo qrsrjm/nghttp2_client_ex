@@ -19,6 +19,11 @@ option(BUILD_SYMBOLS    "Build with Symbols" ON)
 #add_definitions(-Wall -Werror -Weffc++ -Wformat -Wformat-security)
 #add_definitions(-pedantic)
 
+if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+  # using GCC
+  add_definitions(-D_U_=__attribute__\(\(unused\)\))
+endif()
+
 # ------------------------------------------------------------------------------
 # Libraries options
 # ------------------------------------------------------------------------------

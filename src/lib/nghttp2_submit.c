@@ -32,10 +32,6 @@
 #include "nghttp2_helper.h"
 #include "nghttp2_priority_spec.h"
 
-#ifndef _U_
-#define _U_ __attribute__((unused))
-#endif
-
 /*
  * Detects the dependency error, that is stream attempted to depend on
  * itself.  If |stream_id| is -1, we use session->next_stream_id as
@@ -533,4 +529,41 @@ ssize_t nghttp2_pack_settings_payload(uint8_t *buf, size_t buflen,
   }
 
   return (ssize_t)nghttp2_frame_pack_settings_payload(buf, iv, niv);
+}
+
+int nghttp2_submit_extension(nghttp2_session *session, uint8_t type,
+                             uint8_t flags, int32_t stream_id, void *payload) {
+  int rv;
+  nghttp2_outbound_item *item;
+  nghttp2_frame *frame;
+  nghttp2_mem *mem;
+
+  mem = &session->mem;
+
+  if (type <= NGHTTP2_CONTINUATION) {
+    return NGHTTP2_ERR_INVALID_ARGUMENT;
+  }
+
+  if (!session->callbacks.pack_extension_callback) {
+    return NGHTTP2_ERR_INVALID_STATE;
+  }
+
+  item = nghttp2_mem_malloc(mem, sizeof(nghttp2_outbound_item));
+  if (item == NULL) {
+    return NGHTTP2_ERR_NOMEM;
+  }
+
+  nghttp2_outbound_item_init(item);
+
+  frame = &item->frame;
+  nghttp2_frame_extension_init(&frame->ext, type, flags, stream_id, payload);
+
+  rv = nghttp2_session_add_item(session, item);
+  if (rv != 0) {
+    nghttp2_frame_extension_free(&frame->ext);
+    nghttp2_mem_free(mem, item);
+    return rv;
+  }
+
+  return 0;
 }

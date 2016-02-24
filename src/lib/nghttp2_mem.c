@@ -24,10 +24,6 @@
  */
 #include "nghttp2_mem.h"
 
-#ifndef _U_
-#define _U_ __attribute__((unused))
-#endif
-
 static void *default_malloc(size_t size, void *mem_user_data _U_) {
   return malloc(size);
 }
