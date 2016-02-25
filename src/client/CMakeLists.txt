@@ -29,6 +29,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}
 SET(SRCS
     ../../ext/http_parser/http_parser.cc
     nghttp2_client_ex.cc
+    support.cc
 )
 
 # ------------------------------------------------------------------------------

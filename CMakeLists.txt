@@ -16,7 +16,12 @@ option(BUILD_SYMBOLS    "Build with Symbols" ON)
 # Compiler options
 # ------------------------------------------------------------------------------
 #add_definitions(-std=c++0x)
-#add_definitions(-Wall -Werror -Weffc++ -Wformat -Wformat-security)
+
+add_definitions(-Wall)
+#add_definitions(-Werror)
+#add_definitions(-Weffc++)
+add_definitions(-Wformat)
+add_definitions(-Wformat-security)
 #add_definitions(-pedantic)
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
@@ -27,7 +32,7 @@ endif()
 # ------------------------------------------------------------------------------
 # Libraries options
 # ------------------------------------------------------------------------------
-#set(LIBRARIES ${LIBRARIES} pthread rt)
+set(LIBRARIES ${LIBRARIES} ssl crypto)
 
 # ------------------------------------------------------------------------------
 # Display the current settings
@@ -43,7 +48,6 @@ message("")
 # ------------------------------------------------------------------------------
 #
 # ------------------------------------------------------------------------------
-set(LIBRARIES ${LIBRARIES} dl)
 message(STATUS "Libraries: ${LIBRARIES}")
 
 # ------------------------------------------------------------------------------
