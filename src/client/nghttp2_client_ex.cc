@@ -20,6 +20,161 @@
 #include <openssl/ssl.h>
 
 #include "support.h"
+#include "nghttp2/nghttp2.h"
+
+//: ----------------------------------------------------------------------------
+//:
+//: ----------------------------------------------------------------------------
+#ifndef _U_
+#define _U_ __attribute__((unused))
+#endif
+
+#define UNUSED(x) ( (void)(x) )
+
+//: ----------------------------------------------------------------------------
+//: nghttp2 support routines
+//: ----------------------------------------------------------------------------
+//: ----------------------------------------------------------------------------
+//: Types
+//: ----------------------------------------------------------------------------
+typedef struct
+{
+        const char *uri;           // The NULL-terminated URI string to retrieve.
+        struct http_parser_url *u; // Parsed result of the |uri|
+        char *authority;           // The authority portion of the |uri|, not NULL-terminated
+        char *path;                // The path portion of the |uri|, including query, not NULL-terminated
+        size_t authoritylen;       // The length of the |authority|
+        size_t pathlen;            // The length of the |path|
+        int32_t stream_id;         // The stream ID of this stream
+} ngxxx_stream;
+
+typedef struct
+{
+        nghttp2_session *session;
+        struct evdns_base *dnsbase;
+        struct bufferevent *bev;
+        ngxxx_stream *stream_data;
+} ngxxx_session;
+
+//: ----------------------------------------------------------------------------
+//: \details: nghttp2_send_callback. Here we transmit the |data|, |length| bytes,
+//:           to the network. Because we are using libevent bufferevent, we just
+//:           write those bytes into bufferevent buffer
+//: \return:  TODO
+//: \param:   TODO
+//: ----------------------------------------------------------------------------
+static ssize_t ngxxx_send_cb(nghttp2_session *a_session _U_,
+                             const uint8_t *a_data,
+                             size_t a_length,
+                             int a_flags _U_,
+                             void *a_user_data)
+{
+        ngxxx_session *l_session = (ngxxx_session *)a_user_data;
+        UNUSED(l_session);
+        // TODO
+#if 0
+        struct bufferevent *bev = session_data->bev;
+        bufferevent_write(bev, data, length);
+#endif
+        return (ssize_t)a_length;
+}
+
+//: ----------------------------------------------------------------------------
+//: \details: nghttp2_on_frame_recv_callback: Called when nghttp2 library
+//:           received a complete frame from the remote peer.
+//: \return:  TODO
+//: \param:   TODO
+//: ----------------------------------------------------------------------------
+static int ngxxx_frame_recv_cb(nghttp2_session *a_session,
+                               const nghttp2_frame *a_frame,
+                               void *a_user_data)
+{
+        ngxxx_session *l_session = (ngxxx_session *)a_user_data;
+        switch (a_frame->hd.type)
+        {
+        case NGHTTP2_HEADERS:
+        {
+                if ((a_frame->headers.cat == NGHTTP2_HCAT_RESPONSE) &&
+                    (l_session->stream_data->stream_id == a_frame->hd.stream_id))
+                {
+                        fprintf(stderr, "All headers received\n");
+                }
+                break;
+        }
+        }
+        return 0;
+}
+
+//: ----------------------------------------------------------------------------
+//: \details: nghttp2_on_data_chunk_recv_callback: Called when DATA frame is
+//:           received from the remote peer. In this implementation, if the frame
+//:           is meant to the stream we initiated, print the received data in
+//:           stdout, so that the user can redirect its output to the file
+//:           easily.
+//: \return:  TODO
+//: \param:   TODO
+//: ----------------------------------------------------------------------------
+static int ngxxx_data_chunk_recv_cb(nghttp2_session *a_session _U_,
+                                    uint8_t a_flags _U_,
+                                    int32_t a_stream_id,
+                                    const uint8_t *a_data,
+                                    size_t a_len,
+                                    void *a_user_data)
+{
+        ngxxx_session *l_session = (ngxxx_session *) a_user_data;
+        if (l_session->stream_data->stream_id == a_stream_id)
+        {
+                fwrite(a_data, a_len, 1, stdout);
+        }
+        return 0;
+}
+
+//: ----------------------------------------------------------------------------
+//: \details: nghttp2_on_stream_close_callback: Called when a stream is about to
+//:           closed. This example program only deals with 1 HTTP request (1
+//:           stream), if it is closed, we send GOAWAY and tear down the
+//:           session
+//: \return:  TODO
+//: \param:   TODO
+//: ----------------------------------------------------------------------------
+static int ngxxx_stream_close_cb(nghttp2_session *a_session,
+                                 int32_t a_stream_id,
+                                 uint32_t a_error_code,
+                                 void *a_user_data)
+{
+        ngxxx_session *l_session = (ngxxx_session *) a_user_data;
+        int l_rv;
+
+        if (l_session->stream_data->stream_id == a_stream_id)
+        {
+                fprintf(stderr, "Stream %d closed with error_code=%d\n", a_stream_id, a_error_code);
+                l_rv = nghttp2_session_terminate_session(a_session, NGHTTP2_NO_ERROR);
+                if (l_rv != 0)
+                {
+                        return NGHTTP2_ERR_CALLBACK_FAILURE;
+                }
+        }
+        return 0;
+}
+
+//: ----------------------------------------------------------------------------
+//: \details: TODO
+//: \return:  TODO
+//: \param:   TODO
+//: ----------------------------------------------------------------------------
+static void ngxxx_init_nghttp2_session(ngxxx_session *a_session_data)
+{
+        nghttp2_session_callbacks *l_cb;
+        nghttp2_session_callbacks_new(&l_cb);
+        nghttp2_session_callbacks_set_send_callback(l_cb, ngxxx_send_cb);
+        nghttp2_session_callbacks_set_on_frame_recv_callback(l_cb, ngxxx_frame_recv_cb);
+        nghttp2_session_callbacks_set_on_data_chunk_recv_callback(l_cb, ngxxx_data_chunk_recv_cb);
+        nghttp2_session_callbacks_set_on_stream_close_callback(l_cb, ngxxx_stream_close_cb);
+        //nghttp2_session_callbacks_set_on_header_callback(l_cb, on_header_callback);
+        //nghttp2_session_callbacks_set_on_begin_headers_callback(l_cb, on_begin_headers_callback);
+        //nghttp2_session_client_new(&a_session_data->session, l_cb, session_data);
+        nghttp2_session_callbacks_del(l_cb);
+}
 
 //: ----------------------------------------------------------------------------
 //: \details: Print the version.
@@ -178,6 +333,26 @@ int main(int argc, char** argv)
                 printf("Error performing ssl_connect\n");
                 return -1;
         }
+
+        // -------------------------------------------
+        // Init session...
+        // -------------------------------------------
+        ngxxx_session *l_session;
+        ngxxx_init_nghttp2_session(l_session);
+
+        // -------------------------------------------
+        // Send connection header
+        // -------------------------------------------
+        //send_client_connection_header(session_data);
+
+        // -------------------------------------------
+        // Send Request
+        // -------------------------------------------
+        //submit_request(session_data);
+        //if (session_send(session_data) != 0)
+        //{
+        //        delete_http2_session_data(session_data);
+        //}
 
         // -------------------------------------------
         // Cleanup...
