@@ -34,6 +34,41 @@
 //: ----------------------------------------------------------------------------
 //: nghttp2 support routines
 //: ----------------------------------------------------------------------------
+
+//: ----------------------------------------------------------------------------
+//: \details: TODO
+//: \return:  TODO
+//: \param:   TODO
+//: ----------------------------------------------------------------------------
+static void print_header(FILE *f,
+                         const uint8_t *name,
+                         size_t namelen,
+                         const uint8_t *value,
+                         size_t valuelen)
+{
+        fwrite(name, namelen, 1, f);
+        fprintf(f, ": ");
+        fwrite(value, valuelen, 1, f);
+        fprintf(f, "\n");
+}
+
+//: ----------------------------------------------------------------------------
+//: \details: Print HTTP headers to |f|. Please note that this function does not
+//:           take into account that header name and value are sequence of
+//:           octets, therefore they may contain non-printable characters.
+//: \return:  TODO
+//: \param:   TODO
+//: ----------------------------------------------------------------------------
+static void print_headers(FILE *f, nghttp2_nv *nva, size_t nvlen)
+{
+        size_t i;
+        for (i = 0; i < nvlen; ++i)
+        {
+                print_header(f, nva[i].name, nva[i].namelen, nva[i].value, nva[i].valuelen);
+        }
+        fprintf(f, "\n");
+}
+
 //: ----------------------------------------------------------------------------
 //: Types
 //: ----------------------------------------------------------------------------
@@ -41,20 +76,77 @@ typedef struct
 {
         const char *uri;           // The NULL-terminated URI string to retrieve.
         struct http_parser_url *u; // Parsed result of the |uri|
+
         char *authority;           // The authority portion of the |uri|, not NULL-terminated
-        char *path;                // The path portion of the |uri|, including query, not NULL-terminated
         size_t authoritylen;       // The length of the |authority|
+
+        char *path;                // The path portion of the |uri|, including query, not NULL-terminated
         size_t pathlen;            // The length of the |path|
+
         int32_t stream_id;         // The stream ID of this stream
 } ngxxx_stream;
 
 typedef struct
 {
         nghttp2_session *session;
-        struct evdns_base *dnsbase;
-        struct bufferevent *bev;
         ngxxx_stream *stream_data;
 } ngxxx_session;
+
+//: ----------------------------------------------------------------------------
+//: \details: TODO
+//: \return:  TODO
+//: \param:   TODO
+//: ----------------------------------------------------------------------------
+#if 0
+static ngxxx_stream *create_http2_stream_data(const char *uri, struct http_parser_url *u)
+{
+        /* MAX 5 digits (max 65535) + 1 ':' + 1 NULL (because of snprintf) */
+        size_t extra = 7;
+        ngxxx_stream *stream_data = malloc(sizeof(ngxxx_stream));
+
+        stream_data->uri = uri;
+        stream_data->u = u;
+        stream_data->stream_id = -1;
+
+        stream_data->authoritylen = u->field_data[UF_HOST].len;
+        stream_data->authority = malloc(stream_data->authoritylen + extra);
+        memcpy(stream_data->authority, &uri[u->field_data[UF_HOST].off], u->field_data[UF_HOST].len);
+        if (u->field_set & (1 << UF_PORT))
+        {
+                stream_data->authoritylen += (size_t) snprintf(stream_data->authority + u->field_data[UF_HOST].len,
+                                extra, ":%u", u->port);
+        }
+
+        /* If we don't have path in URI, we use "/" as path. */
+        stream_data->pathlen = 1;
+        if (u->field_set & (1 << UF_PATH))
+        {
+                stream_data->pathlen = u->field_data[UF_PATH].len;
+        }
+        if (u->field_set & (1 << UF_QUERY))
+        {
+                /* +1 for '?' character */
+                stream_data->pathlen += (size_t) (u->field_data[UF_QUERY].len + 1);
+        }
+
+        stream_data->path = malloc(stream_data->pathlen);
+        if (u->field_set & (1 << UF_PATH))
+        {
+                memcpy(stream_data->path, &uri[u->field_data[UF_PATH].off], u->field_data[UF_PATH].len);
+        } else
+        {
+                stream_data->path[0] = '/';
+        }
+        if (u->field_set & (1 << UF_QUERY))
+        {
+                stream_data->path[stream_data->pathlen - u->field_data[UF_QUERY].len - 1] = '?';
+                memcpy(stream_data->path + stream_data->pathlen - u->field_data[UF_QUERY].len,
+                                &uri[u->field_data[UF_QUERY].off], u->field_data[UF_QUERY].len);
+        }
+
+        return stream_data;
+}
+#endif
 
 //: ----------------------------------------------------------------------------
 //: \details: nghttp2_send_callback. Here we transmit the |data|, |length| bytes,
@@ -144,7 +236,6 @@ static int ngxxx_stream_close_cb(nghttp2_session *a_session,
 {
         ngxxx_session *l_session = (ngxxx_session *) a_user_data;
         int l_rv;
-
         if (l_session->stream_data->stream_id == a_stream_id)
         {
                 fprintf(stderr, "Stream %d closed with error_code=%d\n", a_stream_id, a_error_code);
@@ -157,12 +248,67 @@ static int ngxxx_stream_close_cb(nghttp2_session *a_session,
         return 0;
 }
 
+
+//: ----------------------------------------------------------------------------
+//: \details: nghttp2_on_header_callback: Called when nghttp2 library emits
+//:           single header name/value pair
+//: \return:  TODO
+//: \param:   TODO
+//: ----------------------------------------------------------------------------
+static int ngxxx_header_cb(nghttp2_session *a_session _U_,
+                           const nghttp2_frame *a_frame,
+                           const uint8_t *a_name,
+                           size_t a_namelen,
+                           const uint8_t *a_value,
+                           size_t a_valuelen,
+                           uint8_t a_flags _U_,
+                           void *a_user_data)
+{
+        ngxxx_session *l_session = (ngxxx_session *)a_user_data;
+        switch (a_frame->hd.type)
+        {
+        case NGHTTP2_HEADERS:
+                if ((a_frame->headers.cat == NGHTTP2_HCAT_RESPONSE) &&
+                    (l_session->stream_data->stream_id == a_frame->hd.stream_id))
+                {
+                        // Print response headers for the initiated request.
+                        //print_header(stderr, name, namelen, value, valuelen);
+                        break;
+                }
+        }
+        return 0;
+}
+
+//: ----------------------------------------------------------------------------
+//: \details: nghttp2_on_begin_headers_callback:
+//:           Called when nghttp2 library gets started to receive header block.
+//: \return:  TODO
+//: \param:   TODO
+//: ----------------------------------------------------------------------------
+static int ngxxx_begin_headers_cb(nghttp2_session *a_session _U_,
+                                  const nghttp2_frame *a_frame,
+                                  void *a_user_data)
+{
+        ngxxx_session *l_session = (ngxxx_session *)a_user_data;
+        switch (a_frame->hd.type)
+        {
+        case NGHTTP2_HEADERS:
+                if ((a_frame->headers.cat == NGHTTP2_HCAT_RESPONSE) &&
+                     (l_session->stream_data->stream_id == a_frame->hd.stream_id))
+                {
+                        fprintf(stderr, "Response headers for stream ID=%d:\n", a_frame->hd.stream_id);
+                }
+                break;
+        }
+        return 0;
+}
+
 //: ----------------------------------------------------------------------------
 //: \details: TODO
 //: \return:  TODO
 //: \param:   TODO
 //: ----------------------------------------------------------------------------
-static void ngxxx_init_nghttp2_session(ngxxx_session *a_session_data)
+static void ngxxx_init_nghttp2_session(ngxxx_session *a_session)
 {
         nghttp2_session_callbacks *l_cb;
         nghttp2_session_callbacks_new(&l_cb);
@@ -170,9 +316,9 @@ static void ngxxx_init_nghttp2_session(ngxxx_session *a_session_data)
         nghttp2_session_callbacks_set_on_frame_recv_callback(l_cb, ngxxx_frame_recv_cb);
         nghttp2_session_callbacks_set_on_data_chunk_recv_callback(l_cb, ngxxx_data_chunk_recv_cb);
         nghttp2_session_callbacks_set_on_stream_close_callback(l_cb, ngxxx_stream_close_cb);
-        //nghttp2_session_callbacks_set_on_header_callback(l_cb, on_header_callback);
-        //nghttp2_session_callbacks_set_on_begin_headers_callback(l_cb, on_begin_headers_callback);
-        //nghttp2_session_client_new(&a_session_data->session, l_cb, session_data);
+        nghttp2_session_callbacks_set_on_header_callback(l_cb, ngxxx_header_cb);
+        nghttp2_session_callbacks_set_on_begin_headers_callback(l_cb, ngxxx_begin_headers_cb);
+        nghttp2_session_client_new(&(a_session->session), l_cb, a_session);
         nghttp2_session_callbacks_del(l_cb);
 }
 
@@ -337,7 +483,11 @@ int main(int argc, char** argv)
         // -------------------------------------------
         // Init session...
         // -------------------------------------------
-        ngxxx_session *l_session;
+        ngxxx_session *l_session = NULL;
+        l_session = (ngxxx_session *)calloc(1, sizeof(ngxxx_session));
+
+        //l_session->stream_data = create_http2_stream_data(uri, &u);
+
         ngxxx_init_nghttp2_session(l_session);
 
         // -------------------------------------------
@@ -353,6 +503,47 @@ int main(int argc, char** argv)
         //{
         //        delete_http2_session_data(session_data);
         //}
+
+#if 0
+        struct http_parser_url u;
+        char *host;
+        uint16_t port;
+        int rv;
+        SSL_CTX *ssl_ctx;
+        struct event_base *evbase;
+        http2_session_data *session_data;
+
+        /* Parse the |uri| and stores its components in |u| */
+        rv = http_parser_parse_url(uri, strlen(uri), 0, &u);
+        if (rv != 0)
+        {
+                errx(1, "Could not parse URI %s", uri);
+        }
+        host = strndup(&uri[u.field_data[UF_HOST].off], u.field_data[UF_HOST].len);
+        if (!(u.field_set & (1 << UF_PORT)))
+        {
+                port = 443;
+        } else
+        {
+                port = u.port;
+        }
+
+        ssl_ctx = create_ssl_ctx();
+
+        evbase = event_base_new();
+
+        session_data = create_http2_session_data(evbase);
+        session_data->stream_data = create_http2_stream_data(uri, &u);
+
+        initiate_connection(evbase, ssl_ctx, host, port, session_data);
+        free(host);
+        host = NULL;
+
+        event_base_loop(evbase, 0);
+
+        event_base_free(evbase);
+        SSL_CTX_free(ssl_ctx);
+#endif
 
         // -------------------------------------------
         // Cleanup...
