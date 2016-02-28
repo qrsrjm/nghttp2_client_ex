@@ -19,27 +19,61 @@
 #include <string>
 #include <openssl/ssl.h>
 
+// For errx
+#include <err.h>
+
+// For sleep
+#include <unistd.h>
+
 #include "support.h"
 #include "nghttp2/nghttp2.h"
 
 //: ----------------------------------------------------------------------------
-//:
+//: Macros
 //: ----------------------------------------------------------------------------
 #ifndef _U_
 #define _U_ __attribute__((unused))
 #endif
-
 #define UNUSED(x) ( (void)(x) )
+#define ARRLEN(x) (sizeof(x) / sizeof(x[0]))
+#define NDBG_PRINT(...) \
+        do { \
+                fprintf(stdout, "%s:%s.%d: ", __FILE__, __FUNCTION__, __LINE__); \
+                fprintf(stdout, __VA_ARGS__);               \
+                fflush(stdout); \
+        } while(0)
 
 //: ----------------------------------------------------------------------------
 //: nghttp2 support routines
 //: ----------------------------------------------------------------------------
 
 //: ----------------------------------------------------------------------------
+//: \details: NPN TLS extension client callback. We check that server advertised
+//:           the HTTP/2 protocol the nghttp2 library supports. If not, exit
+//:           the program.
+//: \return:  TODO
+//: \param:   TODO
+//: ----------------------------------------------------------------------------
+static int select_next_proto_cb(SSL *a_ssl _U_,
+                                unsigned char **a_out,
+                                unsigned char *a_outlen,
+                                const unsigned char *a_in,
+                                unsigned int a_inlen,
+                                void *a_arg _U_)
+{
+        if (nghttp2_select_next_protocol(a_out, a_outlen, a_in, a_inlen) <= 0)
+        {
+                errx(1, "Server did not advertise " NGHTTP2_PROTO_VERSION_ID);
+        }
+        return SSL_TLSEXT_ERR_OK;
+}
+
+//: ----------------------------------------------------------------------------
 //: \details: TODO
 //: \return:  TODO
 //: \param:   TODO
 //: ----------------------------------------------------------------------------
+#if 0
 static void print_header(FILE *f,
                          const uint8_t *name,
                          size_t namelen,
@@ -51,6 +85,7 @@ static void print_header(FILE *f,
         fwrite(value, valuelen, 1, f);
         fprintf(f, "\n");
 }
+#endif
 
 //: ----------------------------------------------------------------------------
 //: \details: Print HTTP headers to |f|. Please note that this function does not
@@ -59,6 +94,7 @@ static void print_header(FILE *f,
 //: \return:  TODO
 //: \param:   TODO
 //: ----------------------------------------------------------------------------
+#if 0
 static void print_headers(FILE *f, nghttp2_nv *nva, size_t nvlen)
 {
         size_t i;
@@ -68,85 +104,23 @@ static void print_headers(FILE *f, nghttp2_nv *nva, size_t nvlen)
         }
         fprintf(f, "\n");
 }
+#endif
 
 //: ----------------------------------------------------------------------------
 //: Types
 //: ----------------------------------------------------------------------------
 typedef struct
 {
-        const char *uri;           // The NULL-terminated URI string to retrieve.
-        struct http_parser_url *u; // Parsed result of the |uri|
-
-        char *authority;           // The authority portion of the |uri|, not NULL-terminated
-        size_t authoritylen;       // The length of the |authority|
-
-        char *path;                // The path portion of the |uri|, including query, not NULL-terminated
-        size_t pathlen;            // The length of the |path|
-
-        int32_t stream_id;         // The stream ID of this stream
+        int32_t m_id;              // The stream ID of this stream
+        bool m_closed;
 } ngxxx_stream;
 
 typedef struct
 {
-        nghttp2_session *session;
-        ngxxx_stream *stream_data;
+        SSL *m_tls;
+        nghttp2_session *m_session;
+        ngxxx_stream *m_stream;
 } ngxxx_session;
-
-//: ----------------------------------------------------------------------------
-//: \details: TODO
-//: \return:  TODO
-//: \param:   TODO
-//: ----------------------------------------------------------------------------
-#if 0
-static ngxxx_stream *create_http2_stream_data(const char *uri, struct http_parser_url *u)
-{
-        /* MAX 5 digits (max 65535) + 1 ':' + 1 NULL (because of snprintf) */
-        size_t extra = 7;
-        ngxxx_stream *stream_data = malloc(sizeof(ngxxx_stream));
-
-        stream_data->uri = uri;
-        stream_data->u = u;
-        stream_data->stream_id = -1;
-
-        stream_data->authoritylen = u->field_data[UF_HOST].len;
-        stream_data->authority = malloc(stream_data->authoritylen + extra);
-        memcpy(stream_data->authority, &uri[u->field_data[UF_HOST].off], u->field_data[UF_HOST].len);
-        if (u->field_set & (1 << UF_PORT))
-        {
-                stream_data->authoritylen += (size_t) snprintf(stream_data->authority + u->field_data[UF_HOST].len,
-                                extra, ":%u", u->port);
-        }
-
-        /* If we don't have path in URI, we use "/" as path. */
-        stream_data->pathlen = 1;
-        if (u->field_set & (1 << UF_PATH))
-        {
-                stream_data->pathlen = u->field_data[UF_PATH].len;
-        }
-        if (u->field_set & (1 << UF_QUERY))
-        {
-                /* +1 for '?' character */
-                stream_data->pathlen += (size_t) (u->field_data[UF_QUERY].len + 1);
-        }
-
-        stream_data->path = malloc(stream_data->pathlen);
-        if (u->field_set & (1 << UF_PATH))
-        {
-                memcpy(stream_data->path, &uri[u->field_data[UF_PATH].off], u->field_data[UF_PATH].len);
-        } else
-        {
-                stream_data->path[0] = '/';
-        }
-        if (u->field_set & (1 << UF_QUERY))
-        {
-                stream_data->path[stream_data->pathlen - u->field_data[UF_QUERY].len - 1] = '?';
-                memcpy(stream_data->path + stream_data->pathlen - u->field_data[UF_QUERY].len,
-                                &uri[u->field_data[UF_QUERY].off], u->field_data[UF_QUERY].len);
-        }
-
-        return stream_data;
-}
-#endif
 
 //: ----------------------------------------------------------------------------
 //: \details: nghttp2_send_callback. Here we transmit the |data|, |length| bytes,
@@ -163,12 +137,18 @@ static ssize_t ngxxx_send_cb(nghttp2_session *a_session _U_,
 {
         ngxxx_session *l_session = (ngxxx_session *)a_user_data;
         UNUSED(l_session);
-        // TODO
-#if 0
-        struct bufferevent *bev = session_data->bev;
-        bufferevent_write(bev, data, length);
-#endif
-        return (ssize_t)a_length;
+        //NDBG_PRINT("SEND_CB\n");
+        //mem_display(a_data, a_length);
+        int l_s;
+        l_s = SSL_write(l_session->m_tls, a_data, a_length);
+        //NDBG_PRINT("%sWRITE%s: l_s: %d\n", ANSI_COLOR_FG_BLUE, ANSI_COLOR_OFF, l_s);
+        if((l_s < 0) ||
+           ((size_t)l_s < a_length))
+        {
+                NDBG_PRINT("Error performing SSL_write: l_s: %d\n", l_s);
+                return -1;
+        }
+        return (ssize_t)l_s;
 }
 
 //: ----------------------------------------------------------------------------
@@ -181,15 +161,16 @@ static int ngxxx_frame_recv_cb(nghttp2_session *a_session,
                                const nghttp2_frame *a_frame,
                                void *a_user_data)
 {
+        //NDBG_PRINT("%sFRAME%s: TYPE[%6u]\n", ANSI_COLOR_BG_MAGENTA, ANSI_COLOR_OFF, a_frame->hd.type);
         ngxxx_session *l_session = (ngxxx_session *)a_user_data;
         switch (a_frame->hd.type)
         {
         case NGHTTP2_HEADERS:
         {
                 if ((a_frame->headers.cat == NGHTTP2_HCAT_RESPONSE) &&
-                    (l_session->stream_data->stream_id == a_frame->hd.stream_id))
+                    (l_session->m_stream->m_id == a_frame->hd.stream_id))
                 {
-                        fprintf(stderr, "All headers received\n");
+                        //fprintf(stderr, "All headers received\n");
                 }
                 break;
         }
@@ -213,8 +194,9 @@ static int ngxxx_data_chunk_recv_cb(nghttp2_session *a_session _U_,
                                     size_t a_len,
                                     void *a_user_data)
 {
+        //NDBG_PRINT("%sCHUNK%s: \n", ANSI_COLOR_BG_BLUE, ANSI_COLOR_OFF);
         ngxxx_session *l_session = (ngxxx_session *) a_user_data;
-        if (l_session->stream_data->stream_id == a_stream_id)
+        if (l_session->m_stream->m_id == a_stream_id)
         {
                 fwrite(a_data, a_len, 1, stdout);
         }
@@ -234,11 +216,13 @@ static int ngxxx_stream_close_cb(nghttp2_session *a_session,
                                  uint32_t a_error_code,
                                  void *a_user_data)
 {
+        //NDBG_PRINT("%sCLOSE%s: \n", ANSI_COLOR_BG_RED, ANSI_COLOR_OFF);
         ngxxx_session *l_session = (ngxxx_session *) a_user_data;
         int l_rv;
-        if (l_session->stream_data->stream_id == a_stream_id)
+        l_session->m_stream->m_closed = true;
+        if (l_session->m_stream->m_id == a_stream_id)
         {
-                fprintf(stderr, "Stream %d closed with error_code=%d\n", a_stream_id, a_error_code);
+                //fprintf(stderr, "Stream %d closed with error_code=%d\n", a_stream_id, a_error_code);
                 l_rv = nghttp2_session_terminate_session(a_session, NGHTTP2_NO_ERROR);
                 if (l_rv != 0)
                 {
@@ -264,12 +248,13 @@ static int ngxxx_header_cb(nghttp2_session *a_session _U_,
                            uint8_t a_flags _U_,
                            void *a_user_data)
 {
+        //NDBG_PRINT("%sHEADER%s: \n", ANSI_COLOR_BG_YELLOW, ANSI_COLOR_OFF);
         ngxxx_session *l_session = (ngxxx_session *)a_user_data;
         switch (a_frame->hd.type)
         {
         case NGHTTP2_HEADERS:
                 if ((a_frame->headers.cat == NGHTTP2_HCAT_RESPONSE) &&
-                    (l_session->stream_data->stream_id == a_frame->hd.stream_id))
+                    (l_session->m_stream->m_id == a_frame->hd.stream_id))
                 {
                         // Print response headers for the initiated request.
                         //print_header(stderr, name, namelen, value, valuelen);
@@ -289,14 +274,15 @@ static int ngxxx_begin_headers_cb(nghttp2_session *a_session _U_,
                                   const nghttp2_frame *a_frame,
                                   void *a_user_data)
 {
+        //NDBG_PRINT("%sBEGIN_HEADERS%s: \n", ANSI_COLOR_BG_WHITE, ANSI_COLOR_OFF);
         ngxxx_session *l_session = (ngxxx_session *)a_user_data;
         switch (a_frame->hd.type)
         {
         case NGHTTP2_HEADERS:
                 if ((a_frame->headers.cat == NGHTTP2_HCAT_RESPONSE) &&
-                     (l_session->stream_data->stream_id == a_frame->hd.stream_id))
+                     (l_session->m_stream->m_id == a_frame->hd.stream_id))
                 {
-                        fprintf(stderr, "Response headers for stream ID=%d:\n", a_frame->hd.stream_id);
+                        //fprintf(stderr, "Response headers for stream ID=%d:\n", a_frame->hd.stream_id);
                 }
                 break;
         }
@@ -318,8 +304,70 @@ static void ngxxx_init_nghttp2_session(ngxxx_session *a_session)
         nghttp2_session_callbacks_set_on_stream_close_callback(l_cb, ngxxx_stream_close_cb);
         nghttp2_session_callbacks_set_on_header_callback(l_cb, ngxxx_header_cb);
         nghttp2_session_callbacks_set_on_begin_headers_callback(l_cb, ngxxx_begin_headers_cb);
-        nghttp2_session_client_new(&(a_session->session), l_cb, a_session);
+        nghttp2_session_client_new(&(a_session->m_session), l_cb, a_session);
         nghttp2_session_callbacks_del(l_cb);
+}
+
+//: ----------------------------------------------------------------------------
+//: \details: TODO
+//: \return:  TODO
+//: \param:   TODO
+//: ----------------------------------------------------------------------------
+static void ngxxx_send_client_connection_header(ngxxx_session *a_session)
+{
+        nghttp2_settings_entry iv[1] = { { NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, 100 } };
+        int rv;
+
+        /* client 24 bytes magic string will be sent by nghttp2 library */
+        rv = nghttp2_submit_settings(a_session->m_session, NGHTTP2_FLAG_NONE, iv, ARRLEN(iv));
+        if (rv != 0)
+        {
+                errx(1, "Could not submit SETTINGS: %s", nghttp2_strerror(rv));
+        }
+}
+
+//: ----------------------------------------------------------------------------
+//: \details: TODO
+//: \return:  TODO
+//: \param:   TODO
+//: ----------------------------------------------------------------------------
+#define MAKE_NV(NAME, VALUE, VALUELEN) {\
+                (uint8_t *) NAME, (uint8_t *)VALUE, sizeof(NAME) - 1, VALUELEN,\
+                NGHTTP2_NV_FLAG_NONE\
+        }
+
+#define MAKE_NV2(NAME, VALUE) {\
+                (uint8_t *) NAME, (uint8_t *)VALUE, sizeof(NAME) - 1, sizeof(VALUE) - 1,\
+                NGHTTP2_NV_FLAG_NONE\
+          }
+
+//: ----------------------------------------------------------------------------
+//: \details: Send HTTP request to the remote peer
+//: \return:  TODO
+//: \param:   TODO
+//: ----------------------------------------------------------------------------
+static void ngxxx_submit_request(ngxxx_session *a_session,
+                                 const std::string &a_schema,
+                                 const std::string &a_host,
+                                 const std::string &a_path)
+{
+        int32_t l_id;
+        ngxxx_stream *l_stream = a_session->m_stream;
+        nghttp2_nv l_hdrs[] =
+        {
+                MAKE_NV2(":method",   "GET"),
+                MAKE_NV( ":scheme",    a_schema.c_str(), a_schema.length()),
+                MAKE_NV( ":authority", a_host.c_str(), a_host.length()),
+                MAKE_NV( ":path",      a_path.c_str(), a_path.length())
+        };
+        //fprintf(stderr, "Request headers:\n");
+        //print_headers(stderr, l_hdrs, ARRLEN(l_hdrs));
+        l_id = nghttp2_submit_request(a_session->m_session, NULL, l_hdrs, ARRLEN(l_hdrs), NULL, l_stream);
+        if (l_id < 0)
+        {
+                errx(1, "Could not submit HTTP request: %s", nghttp2_strerror(l_id));
+        }
+        l_stream->m_id = l_id;
 }
 
 //: ----------------------------------------------------------------------------
@@ -455,10 +503,22 @@ int main(int argc, char** argv)
         // -------------------------------------------
         // Do stuff...
         // -------------------------------------------
-        printf("Connecting...\n");
+        //printf("Connecting...\n");
 
         // Init tls...
         tls_init();
+
+        // -------------------------------------------
+        // TLS CTX
+        // -------------------------------------------
+        SSL_CTX *l_ctx = NULL;
+        l_ctx = tls_create_ctx();
+        if(!l_ctx)
+        {
+                printf("Error performing tls_create_ctx\n");
+                return -1;
+        }
+        SSL_CTX_set_next_proto_select_cb(l_ctx, select_next_proto_cb, NULL);
 
         // Get host/path
         std::string l_host;
@@ -472,83 +532,77 @@ int main(int argc, char** argv)
         }
 
         // Connect
-        SSL *l_ssl = NULL;
-        l_ssl = ssl_connect(l_host, l_port);
-        if(!l_ssl)
+        SSL *l_tls = NULL;
+        l_tls = tls_connect(l_ctx, l_host, l_port);
+        if(!l_tls)
         {
                 printf("Error performing ssl_connect\n");
                 return -1;
         }
 
         // -------------------------------------------
-        // Init session...
+        // Create session/stream
         // -------------------------------------------
         ngxxx_session *l_session = NULL;
         l_session = (ngxxx_session *)calloc(1, sizeof(ngxxx_session));
+        l_session->m_stream = (ngxxx_stream *)calloc(1, sizeof(ngxxx_stream));
+        l_session->m_stream->m_id = -1;
+        l_session->m_stream->m_closed = false;
+        l_session->m_tls = l_tls;
 
-        //l_session->stream_data = create_http2_stream_data(uri, &u);
-
+        // -------------------------------------------
+        // Init session...
+        // -------------------------------------------
         ngxxx_init_nghttp2_session(l_session);
 
         // -------------------------------------------
         // Send connection header
         // -------------------------------------------
-        //send_client_connection_header(session_data);
+        ngxxx_send_client_connection_header(l_session);
 
         // -------------------------------------------
         // Send Request
         // -------------------------------------------
-        //submit_request(session_data);
-        //if (session_send(session_data) != 0)
-        //{
-        //        delete_http2_session_data(session_data);
-        //}
+        ngxxx_submit_request(l_session, "https", l_host, l_path);
 
-#if 0
-        struct http_parser_url u;
-        char *host;
-        uint16_t port;
-        int rv;
-        SSL_CTX *ssl_ctx;
-        struct event_base *evbase;
-        http2_session_data *session_data;
-
-        /* Parse the |uri| and stores its components in |u| */
-        rv = http_parser_parse_url(uri, strlen(uri), 0, &u);
-        if (rv != 0)
+        while(!l_session->m_stream->m_closed)
         {
-                errx(1, "Could not parse URI %s", uri);
+                // -------------------------------------------
+                // Session Send???
+                // -------------------------------------------
+                l_s = nghttp2_session_send(l_session->m_session);
+                if (l_s != 0)
+                {
+                        warnx("Fatal error: %s", nghttp2_strerror(l_s));
+                        // TODO
+                        //delete_http2_session_data(session_data);
+                        return -1;
+                }
+                //NDBG_PRINT("nghttp2_session_send: %d\n", l_s);
+
+                // -------------------------------------------
+                // Read Response...
+                // -------------------------------------------
+                char l_buf[16384];
+                l_s = SSL_read(l_tls, l_buf, 16384);
+                //NDBG_PRINT("%sREAD%s: l_s: %d\n", ANSI_COLOR_FG_RED, ANSI_COLOR_OFF, l_s);
+                //if(l_s > 0) mem_display((uint8_t *)l_buf, l_s);
+                ssize_t l_rl;
+                l_rl = nghttp2_session_mem_recv(l_session->m_session, (const uint8_t *)l_buf, l_s);
+                if(l_rl < 0)
+                {
+                        warnx("Fatal error: %s", nghttp2_strerror((int) l_rl));
+                        // TODO
+                        //delete_http2_session_data(session_data);
+                        return -1;
+                }
         }
-        host = strndup(&uri[u.field_data[UF_HOST].off], u.field_data[UF_HOST].len);
-        if (!(u.field_set & (1 << UF_PORT)))
-        {
-                port = 443;
-        } else
-        {
-                port = u.port;
-        }
-
-        ssl_ctx = create_ssl_ctx();
-
-        evbase = event_base_new();
-
-        session_data = create_http2_session_data(evbase);
-        session_data->stream_data = create_http2_stream_data(uri, &u);
-
-        initiate_connection(evbase, ssl_ctx, host, port, session_data);
-        free(host);
-        host = NULL;
-
-        event_base_loop(evbase, 0);
-
-        event_base_free(evbase);
-        SSL_CTX_free(ssl_ctx);
-#endif
 
         // -------------------------------------------
         // Cleanup...
         // -------------------------------------------
-        SSL_shutdown(l_ssl);
-        printf("Cleaning up...\n");
+        SSL_shutdown(l_tls);
+        SSL_CTX_free(l_ctx);
+        //printf("Cleaning up...\n");
         return 0;
 }

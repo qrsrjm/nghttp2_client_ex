@@ -284,11 +284,37 @@ int32_t parse_url(const std::string &a_url, std::string &ao_host, uint16_t &ao_p
 }
 
 //: ----------------------------------------------------------------------------
+//: \details: Create tls ctx
+//: \return:  TODO
+//: \param:   TODO
+//: ----------------------------------------------------------------------------
+SSL_CTX *tls_create_ctx(void)
+{
+        // No validation... for now...
+        SSL_CTX *l_ctx;
+        l_ctx = SSL_CTX_new(SSLv23_client_method());
+        // leaks...
+        if (l_ctx == NULL)
+        {
+                ERR_print_errors_fp(stderr);
+                printf("SSL_CTX_new Error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+                return NULL;
+        }
+        SSL_CTX_set_options(l_ctx,
+                            SSL_OP_ALL |
+                            SSL_OP_NO_SSLv2 |
+                            SSL_OP_NO_SSLv3 |
+                            SSL_OP_NO_COMPRESSION |
+                            SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION);
+        return l_ctx;
+}
+
+//: ----------------------------------------------------------------------------
 //: \details: TODO
 //: \return:  TODO
 //: \param:   TODO
 //: ----------------------------------------------------------------------------
-SSL *ssl_connect(const std::string &a_host, uint16_t a_port)
+SSL *tls_connect(SSL_CTX *a_tls_ctx, const std::string &a_host, uint16_t a_port)
 {
         // Lookup host
         int32_t l_s;
@@ -321,22 +347,10 @@ SSL *ssl_connect(const std::string &a_host, uint16_t a_port)
                 return NULL;
         }
 
-        printf("Connected\n");
-        // ssl ctx
-        SSL_CTX *l_ctx;
-        l_ctx = SSL_CTX_new(SSLv23_client_method());
-        // leaks...
-        if (l_ctx == NULL)
-        {
-                ERR_print_errors_fp(stderr);
-                printf("SSL_CTX_new Error: %s\n", ERR_error_string(ERR_get_error(), NULL));
-                return NULL;
-        }
-        // No validation... for now...
-
+        //printf("Connected\n");
         // Create TLS Context
         SSL *l_tls = NULL;
-        l_tls = ::SSL_new(l_ctx);
+        l_tls = ::SSL_new(a_tls_ctx);
         // TODO Check for NULL
 
         ::SSL_set_fd(l_tls, l_fd);
@@ -353,3 +367,55 @@ SSL *ssl_connect(const std::string &a_host, uint16_t a_port)
 
         return l_tls;
 }
+
+//: ----------------------------------------------------------------------------
+//: \details: TODO
+//: \return:  TODO
+//: \param:   TODO
+//: ----------------------------------------------------------------------------
+void mem_display(const uint8_t* a_mem_buf, uint32_t a_length)
+{
+        char l_display_line[256] = "";
+        unsigned int l_bytes_displayed = 0;
+        char l_byte_display[8] = "";
+        char l_ascii_display[17]="";
+        while (l_bytes_displayed < a_length)
+        {
+                unsigned int l_col = 0;
+                snprintf(l_display_line, sizeof(l_display_line), "%s0x%08X %s", ANSI_COLOR_FG_BLUE, l_bytes_displayed, ANSI_COLOR_OFF);
+                strcat(l_display_line, " ");
+                strcat(l_display_line, ANSI_COLOR_FG_GREEN);
+                while ((l_col < 16) && (l_bytes_displayed < a_length))
+                {
+
+                        snprintf(l_byte_display, sizeof(l_byte_display), "%02X", (unsigned char) a_mem_buf[l_bytes_displayed]);
+                        strcat(l_display_line, l_byte_display);
+                        if (isprint(a_mem_buf[l_bytes_displayed]))
+                                l_ascii_display[l_col] = a_mem_buf[l_bytes_displayed];
+                        else
+                                l_ascii_display[l_col] = '.';
+                        l_col++;
+                        l_bytes_displayed++;
+                        if (!(l_col % 4))
+                                strcat(l_display_line, " ");
+                }
+                if ((l_col < 16) && (l_bytes_displayed >= a_length))
+                {
+                        while (l_col < 16)
+                        {
+
+                                strcat(l_display_line, "..");
+                                l_ascii_display[l_col] = '.';
+                                l_col++;
+                                if (!(l_col % 4))
+                                        strcat(l_display_line, " ");
+                        }
+                }
+                l_ascii_display[l_col] = '\0';
+                strcat(l_display_line, ANSI_COLOR_OFF);
+                strcat(l_display_line, " ");
+                strcat(l_display_line, l_ascii_display);
+                printf("%s\n", l_display_line);
+        }
+}
+
