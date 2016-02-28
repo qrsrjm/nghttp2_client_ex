@@ -73,7 +73,6 @@ static int select_next_proto_cb(SSL *a_ssl _U_,
 //: \return:  TODO
 //: \param:   TODO
 //: ----------------------------------------------------------------------------
-#if 0
 static void print_header(FILE *f,
                          const uint8_t *name,
                          size_t namelen,
@@ -85,7 +84,6 @@ static void print_header(FILE *f,
         fwrite(value, valuelen, 1, f);
         fprintf(f, "\n");
 }
-#endif
 
 //: ----------------------------------------------------------------------------
 //: \details: Print HTTP headers to |f|. Please note that this function does not
@@ -94,7 +92,6 @@ static void print_header(FILE *f,
 //: \return:  TODO
 //: \param:   TODO
 //: ----------------------------------------------------------------------------
-#if 0
 static void print_headers(FILE *f, nghttp2_nv *nva, size_t nvlen)
 {
         size_t i;
@@ -104,7 +101,6 @@ static void print_headers(FILE *f, nghttp2_nv *nva, size_t nvlen)
         }
         fprintf(f, "\n");
 }
-#endif
 
 //: ----------------------------------------------------------------------------
 //: Types
@@ -257,7 +253,7 @@ static int ngxxx_header_cb(nghttp2_session *a_session _U_,
                     (l_session->m_stream->m_id == a_frame->hd.stream_id))
                 {
                         // Print response headers for the initiated request.
-                        //print_header(stderr, name, namelen, value, valuelen);
+                        print_header(stdout, a_name, a_namelen, a_value, a_valuelen);
                         break;
                 }
         }
@@ -361,7 +357,7 @@ static void ngxxx_submit_request(ngxxx_session *a_session,
                 MAKE_NV( ":path",      a_path.c_str(), a_path.length())
         };
         //fprintf(stderr, "Request headers:\n");
-        //print_headers(stderr, l_hdrs, ARRLEN(l_hdrs));
+        print_headers(stdout, l_hdrs, ARRLEN(l_hdrs));
         l_id = nghttp2_submit_request(a_session->m_session, NULL, l_hdrs, ARRLEN(l_hdrs), NULL, l_stream);
         if (l_id < 0)
         {
