@@ -104,6 +104,24 @@ void nghttp2_session_callbacks_set_on_header_callback(
   cbs->on_header_callback = on_header_callback;
 }
 
+void nghttp2_session_callbacks_set_on_header_callback2(
+    nghttp2_session_callbacks *cbs,
+    nghttp2_on_header_callback2 on_header_callback2) {
+  cbs->on_header_callback2 = on_header_callback2;
+}
+
+void nghttp2_session_callbacks_set_on_invalid_header_callback(
+    nghttp2_session_callbacks *cbs,
+    nghttp2_on_invalid_header_callback on_invalid_header_callback) {
+  cbs->on_invalid_header_callback = on_invalid_header_callback;
+}
+
+void nghttp2_session_callbacks_set_on_invalid_header_callback2(
+    nghttp2_session_callbacks *cbs,
+    nghttp2_on_invalid_header_callback2 on_invalid_header_callback2) {
+  cbs->on_invalid_header_callback2 = on_invalid_header_callback2;
+}
+
 void nghttp2_session_callbacks_set_select_padding_callback(
     nghttp2_session_callbacks *cbs,
     nghttp2_select_padding_callback select_padding_callback) {
@@ -144,4 +162,9 @@ void nghttp2_session_callbacks_set_on_extension_chunk_recv_callback(
     nghttp2_session_callbacks *cbs,
     nghttp2_on_extension_chunk_recv_callback on_extension_chunk_recv_callback) {
   cbs->on_extension_chunk_recv_callback = on_extension_chunk_recv_callback;
+}
+
+void nghttp2_session_callbacks_set_error_callback(
+    nghttp2_session_callbacks *cbs, nghttp2_error_callback error_callback) {
+  cbs->error_callback = error_callback;
 }
