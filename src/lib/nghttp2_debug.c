@@ -1,7 +1,7 @@
 /*
  * nghttp2 - HTTP/2 C Library
  *
- * Copyright (c) 2012, 2013 Tatsuhiro Tsujikawa
+ * Copyright (c) 2016 Tatsuhiro Tsujikawa
  *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
@@ -22,21 +22,37 @@
  * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-#ifndef NGHTTP2VER_H
-#define NGHTTP2VER_H
+#include "nghttp2_debug.h"
 
-/**
- * @macro
- * Version number of the nghttp2 library release
- */
-#define NGHTTP2_VERSION "1.16.0-DEV"
+#include <stdio.h>
 
-/**
- * @macro
- * Numerical representation of the version number of the nghttp2 library
- * release. This is a 24 bit number with 8 bits for major number, 8 bits
- * for minor and 8 bits for patch. Version 1.2.3 becomes 0x010203.
- */
-#define NGHTTP2_VERSION_NUM 0x011000
+#ifdef DEBUGBUILD
 
-#endif /* NGHTTP2VER_H */
+static void nghttp2_default_debug_vfprintf_callback(const char *fmt,
+                                                    va_list args) {
+  vfprintf(stderr, fmt, args);
+}
+
+static nghttp2_debug_vprintf_callback static_debug_vprintf_callback =
+    nghttp2_default_debug_vfprintf_callback;
+
+void nghttp2_debug_vprintf(const char *format, ...) {
+  if (static_debug_vprintf_callback) {
+    va_list args;
+    va_start(args, format);
+    static_debug_vprintf_callback(format, args);
+    va_end(args);
+  }
+}
+
+void nghttp2_set_debug_vprintf_callback(
+    nghttp2_debug_vprintf_callback debug_vprintf_callback) {
+  static_debug_vprintf_callback = debug_vprintf_callback;
+}
+
+#else /* !DEBUGBUILD */
+
+void nghttp2_set_debug_vprintf_callback(
+    nghttp2_debug_vprintf_callback debug_vprintf_callback _U_) {}
+
+#endif /* !DEBUGBUILD */

@@ -1,7 +1,7 @@
 /*
  * nghttp2 - HTTP/2 C Library
  *
- * Copyright (c) 2012, 2013 Tatsuhiro Tsujikawa
+ * Copyright (c) 2016 Tatsuhiro Tsujikawa
  *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
@@ -22,21 +22,22 @@
  * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-#ifndef NGHTTP2VER_H
-#define NGHTTP2VER_H
+#ifndef NGHTTP2_DEBUG_H
+#define NGHTTP2_DEBUG_H
 
-/**
- * @macro
- * Version number of the nghttp2 library release
- */
-#define NGHTTP2_VERSION "1.16.0-DEV"
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif /* HAVE_CONFIG_H */
 
-/**
- * @macro
- * Numerical representation of the version number of the nghttp2 library
- * release. This is a 24 bit number with 8 bits for major number, 8 bits
- * for minor and 8 bits for patch. Version 1.2.3 becomes 0x010203.
- */
-#define NGHTTP2_VERSION_NUM 0x011000
+#include <nghttp2/nghttp2.h>
 
-#endif /* NGHTTP2VER_H */
+#ifdef DEBUGBUILD
+#define DEBUGF(...) nghttp2_debug_vprintf(__VA_ARGS__)
+void nghttp2_debug_vprintf(const char *format, ...);
+#else
+#define DEBUGF(...)                                                            \
+  do {                                                                         \
+  } while (0)
+#endif
+
+#endif /* NGHTTP2_DEBUG_H */

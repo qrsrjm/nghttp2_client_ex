@@ -45,6 +45,7 @@ extern "C" {
 #include <inttypes.h>
 #endif /* !defined(_MSC_VER) || (_MSC_VER >= 1800) */
 #include <sys/types.h>
+#include <stdarg.h>
 
 #include <nghttp2/nghttp2ver.h>
 
@@ -2801,8 +2802,8 @@ NGHTTP2_EXTERN int nghttp2_session_send(nghttp2_session *session);
  *   buffer up small chunks of data as necessary to avoid this
  *   situation.
  */
-NGHTTP2_EXTERN ssize_t
-nghttp2_session_mem_send(nghttp2_session *session, const uint8_t **data_ptr);
+NGHTTP2_EXTERN ssize_t nghttp2_session_mem_send(nghttp2_session *session,
+                                                const uint8_t **data_ptr);
 
 /**
  * @function
@@ -3017,9 +3018,8 @@ nghttp2_session_get_outbound_queue_size(nghttp2_session *session);
  *
  * This function returns -1 if it fails.
  */
-NGHTTP2_EXTERN int32_t
-nghttp2_session_get_stream_effective_recv_data_length(nghttp2_session *session,
-                                                      int32_t stream_id);
+NGHTTP2_EXTERN int32_t nghttp2_session_get_stream_effective_recv_data_length(
+    nghttp2_session *session, int32_t stream_id);
 
 /**
  * @function
@@ -3038,9 +3038,8 @@ nghttp2_session_get_stream_effective_recv_data_length(nghttp2_session *session,
  *
  * This function returns -1 if it fails.
  */
-NGHTTP2_EXTERN int32_t
-nghttp2_session_get_stream_effective_local_window_size(nghttp2_session *session,
-                                                       int32_t stream_id);
+NGHTTP2_EXTERN int32_t nghttp2_session_get_stream_effective_local_window_size(
+    nghttp2_session *session, int32_t stream_id);
 
 /**
  * @function
@@ -3054,9 +3053,8 @@ nghttp2_session_get_stream_effective_local_window_size(nghttp2_session *session,
  *
  * This function returns -1 if it fails.
  */
-NGHTTP2_EXTERN int32_t
-nghttp2_session_get_stream_local_window_size(nghttp2_session *session,
-                                             int32_t stream_id);
+NGHTTP2_EXTERN int32_t nghttp2_session_get_stream_local_window_size(
+    nghttp2_session *session, int32_t stream_id);
 
 /**
  * @function
@@ -3123,9 +3121,8 @@ nghttp2_session_get_local_window_size(nghttp2_session *session);
  *
  * This function returns -1 if it fails.
  */
-NGHTTP2_EXTERN int32_t
-nghttp2_session_get_stream_remote_window_size(nghttp2_session *session,
-                                              int32_t stream_id);
+NGHTTP2_EXTERN int32_t nghttp2_session_get_stream_remote_window_size(
+    nghttp2_session *session, int32_t stream_id);
 
 /**
  * @function
@@ -3278,9 +3275,8 @@ NGHTTP2_EXTERN int nghttp2_submit_shutdown_notice(nghttp2_session *session);
  * The |id| must be one of values defined in
  * :enum:`nghttp2_settings_id`.
  */
-NGHTTP2_EXTERN uint32_t
-nghttp2_session_get_remote_settings(nghttp2_session *session,
-                                    nghttp2_settings_id id);
+NGHTTP2_EXTERN uint32_t nghttp2_session_get_remote_settings(
+    nghttp2_session *session, nghttp2_settings_id id);
 
 /**
  * @function
@@ -3289,9 +3285,8 @@ nghttp2_session_get_remote_settings(nghttp2_session *session,
  * by the remote endpoint.  The |id| must be one of the values defined
  * in :enum:`nghttp2_settings_id`.
  */
-NGHTTP2_EXTERN uint32_t
-nghttp2_session_get_local_settings(nghttp2_session *session,
-                                   nghttp2_settings_id id);
+NGHTTP2_EXTERN uint32_t nghttp2_session_get_local_settings(
+    nghttp2_session *session, nghttp2_settings_id id);
 
 /**
  * @function
@@ -3586,9 +3581,8 @@ NGHTTP2_EXTERN int nghttp2_session_upgrade2(nghttp2_session *session,
  * :enum:`NGHTTP2_ERR_INSUFF_BUFSIZE`
  *     The provided |buflen| size is too small to hold the output.
  */
-NGHTTP2_EXTERN ssize_t
-nghttp2_pack_settings_payload(uint8_t *buf, size_t buflen,
-                              const nghttp2_settings_entry *iv, size_t niv);
+NGHTTP2_EXTERN ssize_t nghttp2_pack_settings_payload(
+    uint8_t *buf, size_t buflen, const nghttp2_settings_entry *iv, size_t niv);
 
 /**
  * @function
@@ -3713,12 +3707,10 @@ nghttp2_priority_spec_check_default(const nghttp2_priority_spec *pri_spec);
  *   frame.
  *
  */
-NGHTTP2_EXTERN int32_t
-nghttp2_submit_request(nghttp2_session *session,
-                       const nghttp2_priority_spec *pri_spec,
-                       const nghttp2_nv *nva, size_t nvlen,
-                       const nghttp2_data_provider *data_prd,
-                       void *stream_user_data);
+NGHTTP2_EXTERN int32_t nghttp2_submit_request(
+    nghttp2_session *session, const nghttp2_priority_spec *pri_spec,
+    const nghttp2_nv *nva, size_t nvlen, const nghttp2_data_provider *data_prd,
+    void *stream_user_data);
 
 /**
  * @function
@@ -3933,11 +3925,10 @@ NGHTTP2_EXTERN int nghttp2_submit_trailer(nghttp2_session *session,
  *   frame.
  *
  */
-NGHTTP2_EXTERN int32_t
-nghttp2_submit_headers(nghttp2_session *session, uint8_t flags,
-                       int32_t stream_id, const nghttp2_priority_spec *pri_spec,
-                       const nghttp2_nv *nva, size_t nvlen,
-                       void *stream_user_data);
+NGHTTP2_EXTERN int32_t nghttp2_submit_headers(
+    nghttp2_session *session, uint8_t flags, int32_t stream_id,
+    const nghttp2_priority_spec *pri_spec, const nghttp2_nv *nva, size_t nvlen,
+    void *stream_user_data);
 
 /**
  * @function
@@ -4145,10 +4136,9 @@ NGHTTP2_EXTERN int nghttp2_submit_settings(nghttp2_session *session,
  *   is called for this frame.
  *
  */
-NGHTTP2_EXTERN int32_t
-nghttp2_submit_push_promise(nghttp2_session *session, uint8_t flags,
-                            int32_t stream_id, const nghttp2_nv *nva,
-                            size_t nvlen, void *promised_stream_user_data);
+NGHTTP2_EXTERN int32_t nghttp2_submit_push_promise(
+    nghttp2_session *session, uint8_t flags, int32_t stream_id,
+    const nghttp2_nv *nva, size_t nvlen, void *promised_stream_user_data);
 
 /**
  * @function
@@ -4692,9 +4682,10 @@ nghttp2_hd_deflate_change_table_size(nghttp2_hd_deflater *deflater,
  * :enum:`NGHTTP2_ERR_INSUFF_BUFSIZE`
  *     The provided |buflen| size is too small to hold the output.
  */
-NGHTTP2_EXTERN ssize_t
-nghttp2_hd_deflate_hd(nghttp2_hd_deflater *deflater, uint8_t *buf,
-                      size_t buflen, const nghttp2_nv *nva, size_t nvlen);
+NGHTTP2_EXTERN ssize_t nghttp2_hd_deflate_hd(nghttp2_hd_deflater *deflater,
+                                             uint8_t *buf, size_t buflen,
+                                             const nghttp2_nv *nva,
+                                             size_t nvlen);
 
 /**
  * @function
@@ -4723,9 +4714,11 @@ nghttp2_hd_deflate_hd(nghttp2_hd_deflater *deflater, uint8_t *buf,
  * :enum:`NGHTTP2_ERR_INSUFF_BUFSIZE`
  *     The provided |buflen| size is too small to hold the output.
  */
-NGHTTP2_EXTERN ssize_t
-nghttp2_hd_deflate_hd_vec(nghttp2_hd_deflater *deflater, const nghttp2_vec *vec,
-                          size_t veclen, const nghttp2_nv *nva, size_t nvlen);
+NGHTTP2_EXTERN ssize_t nghttp2_hd_deflate_hd_vec(nghttp2_hd_deflater *deflater,
+                                                 const nghttp2_vec *vec,
+                                                 size_t veclen,
+                                                 const nghttp2_nv *nva,
+                                                 size_t nvlen);
 
 /**
  * @function
@@ -5045,10 +5038,11 @@ NGHTTP2_EXTERN ssize_t nghttp2_hd_inflate_hd(nghttp2_hd_inflater *inflater,
  *     }
  *
  */
-NGHTTP2_EXTERN ssize_t
-nghttp2_hd_inflate_hd2(nghttp2_hd_inflater *inflater, nghttp2_nv *nv_out,
-                       int *inflate_flags, const uint8_t *in, size_t inlen,
-                       int in_final);
+NGHTTP2_EXTERN ssize_t nghttp2_hd_inflate_hd2(nghttp2_hd_inflater *inflater,
+                                              nghttp2_nv *nv_out,
+                                              int *inflate_flags,
+                                              const uint8_t *in, size_t inlen,
+                                              int in_final);
 
 /**
  * @function
@@ -5237,6 +5231,42 @@ NGHTTP2_EXTERN int32_t nghttp2_stream_get_weight(nghttp2_stream *stream);
  */
 NGHTTP2_EXTERN int32_t
 nghttp2_stream_get_sum_dependency_weight(nghttp2_stream *stream);
+
+/**
+ * @functypedef
+ *
+ * Callback function invoked when the library outputs debug logging.
+ * The function is called with arguments suitable for ``vfprintf(3)``
+ *
+ * The debug output is only enabled if the library is built with
+ * ``DEBUGBUILD`` macro defined.
+ */
+typedef void (*nghttp2_debug_vprintf_callback)(const char *format,
+                                               va_list args);
+
+/**
+ * @function
+ *
+ * Sets a debug output callback called by the library when built with
+ * ``DEBUGBUILD`` macro defined.  If this option is not used, debug
+ * log is written into standard error output.
+ *
+ * For builds without ``DEBUGBUILD`` macro defined, this function is
+ * noop.
+ *
+ * Note that building with ``DEBUGBUILD`` may cause significant
+ * performance penalty to libnghttp2 because of extra processing.  It
+ * should be used for debugging purpose only.
+ *
+ * .. Warning::
+ *
+ *   Building with ``DEBUGBUILD`` may cause significant performance
+ *   penalty to libnghttp2 because of extra processing.  It should be
+ *   used for debugging purpose only.  We write this two times because
+ *   this is important.
+ */
+NGHTTP2_EXTERN void nghttp2_set_debug_vprintf_callback(
+    nghttp2_debug_vprintf_callback debug_vprintf_callback);
 
 #ifdef __cplusplus
 }

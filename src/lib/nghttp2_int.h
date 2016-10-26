@@ -29,15 +29,9 @@
 #include <config.h>
 #endif /* HAVE_CONFIG_H */
 
-/* Macros, types and constants for internal use */
+#include <nghttp2/nghttp2.h>
 
-#ifdef DEBUGBUILD
-#define DEBUGF(x) x
-#else
-#define DEBUGF(x)                                                              \
-  do {                                                                         \
-  } while (0)
-#endif
+/* Macros, types and constants for internal use */
 
 /* "less" function, return nonzero if |lhs| is less than |rhs|. */
 typedef int (*nghttp2_less)(const void *lhs, const void *rhs);
