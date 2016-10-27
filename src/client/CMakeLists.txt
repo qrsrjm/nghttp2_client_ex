@@ -26,11 +26,16 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}
 # ------------------------------------------------------------------------------
 # Source files
 # ------------------------------------------------------------------------------
-SET(SRCS
+SET(H2_CLIENT_SRCS
     ../../ext/http_parser/http_parser.cc
-    nghttp2_client_ex.cc
     support.cc
+    h2_client.cc
 )
+
+SET(CLIENT_SRCS
+    client.cc
+)
+
 
 # ------------------------------------------------------------------------------
 # Headers
@@ -41,7 +46,14 @@ SET(HDRS
 # ------------------------------------------------------------------------------
 # build
 # ------------------------------------------------------------------------------
-add_executable(nghttp2_client_ex_cmd ${HDRS} ${SRCS})
-add_dependencies(nghttp2_client_ex_cmd nghttp2)
-SET_TARGET_PROPERTIES(nghttp2_client_ex_cmd PROPERTIES OUTPUT_NAME "nghttp2_client_ex")
-target_link_libraries(nghttp2_client_ex_cmd ${CMAKE_BINARY_DIR}/src/lib/libnghttp2.a ${LIBRARIES})
+add_executable(client_cmd ${HDRS} ${CLIENT_SRCS})
+add_dependencies(client_cmd nghttp2)
+SET_TARGET_PROPERTIES(client_cmd PROPERTIES OUTPUT_NAME "client")
+target_link_libraries(client_cmd ${CMAKE_BINARY_DIR}/src/lib/libnghttp2.a ${LIBRARIES})
+
+add_executable(h2_client_cmd ${HDRS} ${H2_CLIENT_SRCS})
+add_dependencies(h2_client_cmd nghttp2)
+SET_TARGET_PROPERTIES(h2_client_cmd PROPERTIES OUTPUT_NAME "h2_client")
+target_link_libraries(h2_client_cmd ${CMAKE_BINARY_DIR}/src/lib/libnghttp2.a ${LIBRARIES})
+
+

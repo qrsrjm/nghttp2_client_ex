@@ -16,6 +16,8 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <netinet/tcp.h>
 
 #include <openssl/err.h>
 #include <openssl/bio.h>
@@ -306,6 +308,10 @@ SSL_CTX *tls_create_ctx(void)
                             SSL_OP_NO_SSLv3 |
                             SSL_OP_NO_COMPRESSION |
                             SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION);
+
+        SSL_CTX_set_mode(l_ctx, SSL_MODE_AUTO_RETRY);
+        SSL_CTX_set_mode(l_ctx, SSL_MODE_RELEASE_BUFFERS);
+
         return l_ctx;
 }
 
@@ -314,7 +320,7 @@ SSL_CTX *tls_create_ctx(void)
 //: \return:  TODO
 //: \param:   TODO
 //: ----------------------------------------------------------------------------
-SSL *tls_connect(SSL_CTX *a_tls_ctx, const std::string &a_host, uint16_t a_port)
+SSL *tls_connect(SSL_CTX *a_tls_ctx, const std::string &a_host, uint16_t a_port, bool a_nonblock)
 {
         // Lookup host
         int32_t l_s;
@@ -325,6 +331,45 @@ SSL *tls_connect(SSL_CTX *a_tls_ctx, const std::string &a_host, uint16_t a_port)
                 printf("Error performing nslookup host: %s port: %u\n",a_host.c_str(), a_port);
                 return NULL;
         }
+
+        // -------------------------------------------------
+        // ex of looping thru getaddrinfo results...
+        // -------------------------------------------------
+#if 0
+        struct addrinfo hints;
+        int l_fd = -1;
+        int l_s;
+        char service[NI_MAXSERV];
+        struct addrinfo *res, *rp;
+        snprintf(service, sizeof(service), "%u", port);
+        memset(&hints, 0, sizeof(struct addrinfo));
+        hints.ai_family = AF_UNSPEC;
+        hints.ai_socktype = SOCK_STREAM;
+        l_s = getaddrinfo(host, service, &hints, &res);
+        if (l_s != 0)
+        {
+                dief("getaddrinfo", gai_strerror(l_s));
+        }
+        for (rp = res; rp; rp = rp->ai_next)
+        {
+                l_fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+                if (l_fd == -1)
+                {
+                        continue;
+                }
+                while ((l_s = connect(l_fd, rp->ai_addr, rp->ai_addrlen)) == -1 &&
+                errno == EINTR)
+                        ;
+                if (l_s == 0)
+                {
+                        break;
+                }
+                close(l_fd);
+                l_fd = -1;
+        }
+        freeaddrinfo(res);
+        return l_fd;
+#endif
 
         // tcp socket
         int l_fd;
@@ -362,7 +407,45 @@ SSL *tls_connect(SSL_CTX *a_tls_ctx, const std::string &a_host, uint16_t a_port)
         {
                 printf("Error performing SSL_connect.\n");
                 // TODO Reason...
+                if(l_tls) {SSL_free(l_tls); l_tls = NULL;}
                 return NULL;
+        }
+
+        if(a_nonblock)
+        {
+                // -------------------------------------------------
+                // make non-blocking
+                // -------------------------------------------------
+                int l_flags;
+                while ((l_flags = fcntl(l_fd, F_GETFL, 0)) == -1 && errno == EINTR);
+                if (l_flags == -1)
+                {
+                        printf("Error performing fcntl. Reason: %s\n", strerror(errno));
+                        // TODO Reason...
+                        if(l_tls) {SSL_free(l_tls); l_tls = NULL;}
+                        return NULL;
+                }
+                while ((l_s = fcntl(l_fd, F_SETFL, l_flags | O_NONBLOCK)) == -1 && errno == EINTR);
+                if (l_s == -1)
+                {
+                        printf("Error performing fcntl. Reason: %s\n", strerror(errno));
+                        // TODO Reason...
+                        if(l_tls) {SSL_free(l_tls); l_tls = NULL;}
+                        return NULL;
+                }
+
+                // -------------------------------------------------
+                // no-delay
+                // -------------------------------------------------
+                int l_set = 1;
+                l_s = setsockopt(l_fd, IPPROTO_TCP, TCP_NODELAY, &l_set, (socklen_t) sizeof(l_set));
+                if (l_s == -1)
+                {
+                        printf("Error performing setsockopt. Reason: %s\n", strerror(errno));
+                        // TODO Reason...
+                        if(l_tls) {SSL_free(l_tls); l_tls = NULL;}
+                        return NULL;
+                }
         }
 
         return l_tls;
