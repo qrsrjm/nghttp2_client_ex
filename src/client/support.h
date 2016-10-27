@@ -43,10 +43,13 @@
 //: ----------------------------------------------------------------------------
 int32_t parse_url(const std::string &a_url, std::string &ao_host, uint16_t &ao_port, std::string &ao_path);
 
+// tcp support
+int tcp_connect(const std::string &a_host, uint16_t a_port);
+
 // TLS Support
 void tls_init(void);
 SSL_CTX *tls_create_ctx(void);
-SSL *tls_connect(SSL_CTX *a_tls_ctx, const std::string &a_host, uint16_t a_port, bool a_nonblock);
+SSL *tls_connect(SSL_CTX *a_tls_ctx, const std::string &a_host, uint16_t a_port);
 
 // Mem dump
 void mem_display(const uint8_t *a_mem_buf, uint32_t a_length);
