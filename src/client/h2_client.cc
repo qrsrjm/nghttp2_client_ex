@@ -98,7 +98,6 @@
 #define ANSI_COLOR_BG_WHITE     "\033[01;47m"
 #define ANSI_COLOR_BG_DEFAULT   "\033[01;49m"
 
-
 //: ----------------------------------------------------------------------------
 //: Macros
 //: ----------------------------------------------------------------------------
@@ -391,8 +390,7 @@ static int on_data_chunk_recv_callback(nghttp2_session *session, uint8_t flags _
         if (l_req) {
                 printf("[INFO] C <---------------------------- S (DATA chunk)\n"
                                 "%lu bytes\n", (unsigned long int) len);
-                fwrite(data, 1, len, stdout);
-                printf("\n");
+                mem_display((const uint8_t *)data, len);
         }
         return 0;
 }

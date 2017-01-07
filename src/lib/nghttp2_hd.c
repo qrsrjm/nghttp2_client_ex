@@ -864,6 +864,11 @@ static ssize_t decode_length(uint32_t *res, size_t *shift_ptr, int *fin,
   for (; in != last; ++in, shift += 7) {
     uint32_t add = *in & 0x7f;
 
+    if (shift >= 32) {
+      DEBUGF("inflate: shift exponent overflow\n");
+      return -1;
+    }
+
     if ((UINT32_MAX >> shift) < add) {
       DEBUGF("inflate: integer overflow on shift\n");
       return -1;
@@ -2276,10 +2281,6 @@ ssize_t nghttp2_hd_decode_length(uint32_t *res, size_t *shift_ptr, int *fin,
   return decode_length(res, shift_ptr, fin, initial, shift, in, last, prefix);
 }
 
-static size_t hd_get_num_table_entries(nghttp2_hd_context *context) {
-  return context->hd_table.len + NGHTTP2_STATIC_TABLE_LENGTH;
-}
-
 static const nghttp2_nv *hd_get_table_entry(nghttp2_hd_context *context,
                                             size_t idx) {
   if (idx == 0) {
@@ -2296,7 +2297,7 @@ static const nghttp2_nv *hd_get_table_entry(nghttp2_hd_context *context,
 }
 
 size_t nghttp2_hd_deflate_get_num_table_entries(nghttp2_hd_deflater *deflater) {
-  return hd_get_num_table_entries(&deflater->ctx);
+  return get_max_index(&deflater->ctx);
 }
 
 const nghttp2_nv *
@@ -2315,7 +2316,7 @@ nghttp2_hd_deflate_get_max_dynamic_table_size(nghttp2_hd_deflater *deflater) {
 }
 
 size_t nghttp2_hd_inflate_get_num_table_entries(nghttp2_hd_inflater *inflater) {
-  return hd_get_num_table_entries(&inflater->ctx);
+  return get_max_index(&inflater->ctx);
 }
 
 const nghttp2_nv *
