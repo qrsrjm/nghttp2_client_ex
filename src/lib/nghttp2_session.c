@@ -494,6 +494,11 @@ static int session_new(nghttp2_session **session_ptr,
     if (option->opt_set_mask & NGHTTP2_OPT_MAX_DEFLATE_DYNAMIC_TABLE_SIZE) {
       max_deflate_dynamic_table_size = option->max_deflate_dynamic_table_size;
     }
+
+    if ((option->opt_set_mask & NGHTTP2_OPT_NO_CLOSED_STREAMS) &&
+        option->no_closed_streams) {
+      (*session_ptr)->opt_flags |= NGHTTP2_OPTMASK_NO_CLOSED_STREAMS;
+    }
   }
 
   rv = nghttp2_hd_deflate_init2(&(*session_ptr)->hd_deflater,
@@ -1051,17 +1056,24 @@ nghttp2_stream *nghttp2_session_open_stream(nghttp2_session *session,
     flags |= NGHTTP2_STREAM_FLAG_PUSH;
   }
 
-  nghttp2_stream_init(stream, stream_id, flags, initial_state, pri_spec->weight,
-                      (int32_t)session->remote_settings.initial_window_size,
-                      (int32_t)session->local_settings.initial_window_size,
-                      stream_user_data, mem);
-
   if (stream_alloc) {
+    nghttp2_stream_init(stream, stream_id, flags, initial_state,
+                        pri_spec->weight,
+                        (int32_t)session->remote_settings.initial_window_size,
+                        (int32_t)session->local_settings.initial_window_size,
+                        stream_user_data, mem);
+
     rv = nghttp2_map_insert(&session->streams, &stream->map_entry);
     if (rv != 0) {
+      nghttp2_stream_free(stream);
       nghttp2_mem_free(mem, stream);
       return NULL;
     }
+  } else {
+    stream->flags = flags;
+    stream->state = initial_state;
+    stream->weight = pri_spec->weight;
+    stream->stream_user_data = stream_user_data;
   }
 
   switch (initial_state) {
@@ -1179,7 +1191,8 @@ int nghttp2_session_close_stream(nghttp2_session *session, int32_t stream_id,
   /* Closes both directions just in case they are not closed yet */
   stream->flags |= NGHTTP2_STREAM_FLAG_CLOSED;
 
-  if (session->server && !is_my_stream_id &&
+  if ((session->opt_flags & NGHTTP2_OPTMASK_NO_CLOSED_STREAMS) == 0 &&
+      session->server && !is_my_stream_id &&
       nghttp2_stream_in_dep_tree(stream)) {
     /* On server side, retain stream at most MAX_CONCURRENT_STREAMS
        combined with the current active incoming streams to make
@@ -3381,8 +3394,7 @@ static int session_call_unpack_extension_callback(nghttp2_session *session) {
  * NGHTTP2_ERR_NOMEM
  *   Out of memory.
  */
-static int session_handle_frame_size_error(nghttp2_session *session,
-                                           nghttp2_frame *frame _U_) {
+static int session_handle_frame_size_error(nghttp2_session *session) {
   /* TODO Currently no callback is called for this error, because we
      call this callback before reading any payload */
   return nghttp2_session_terminate_session(session, NGHTTP2_FRAME_SIZE_ERROR);
@@ -3978,8 +3990,7 @@ static int session_process_headers_frame(nghttp2_session *session) {
   nghttp2_frame *frame = &iframe->frame;
   nghttp2_stream *stream;
 
-  rv = nghttp2_frame_unpack_headers_payload(&frame->headers, iframe->sbuf.pos,
-                                            nghttp2_buf_len(&iframe->sbuf));
+  rv = nghttp2_frame_unpack_headers_payload(&frame->headers, iframe->sbuf.pos);
 
   if (rv != 0) {
     return nghttp2_session_terminate_session_with_reason(
@@ -4069,8 +4080,7 @@ static int session_process_priority_frame(nghttp2_session *session) {
   nghttp2_inbound_frame *iframe = &session->iframe;
   nghttp2_frame *frame = &iframe->frame;
 
-  nghttp2_frame_unpack_priority_payload(&frame->priority, iframe->sbuf.pos,
-                                        nghttp2_buf_len(&iframe->sbuf));
+  nghttp2_frame_unpack_priority_payload(&frame->priority, iframe->sbuf.pos);
 
   return nghttp2_session_on_priority_received(session, frame);
 }
@@ -4111,8 +4121,7 @@ static int session_process_rst_stream_frame(nghttp2_session *session) {
   nghttp2_inbound_frame *iframe = &session->iframe;
   nghttp2_frame *frame = &iframe->frame;
 
-  nghttp2_frame_unpack_rst_stream_payload(&frame->rst_stream, iframe->sbuf.pos,
-                                          nghttp2_buf_len(&iframe->sbuf));
+  nghttp2_frame_unpack_rst_stream_payload(&frame->rst_stream, iframe->sbuf.pos);
 
   return nghttp2_session_on_rst_stream_received(session, frame);
 }
@@ -4584,8 +4593,8 @@ static int session_process_push_promise_frame(nghttp2_session *session) {
   nghttp2_inbound_frame *iframe = &session->iframe;
   nghttp2_frame *frame = &iframe->frame;
 
-  rv = nghttp2_frame_unpack_push_promise_payload(
-      &frame->push_promise, iframe->sbuf.pos, nghttp2_buf_len(&iframe->sbuf));
+  rv = nghttp2_frame_unpack_push_promise_payload(&frame->push_promise,
+                                                 iframe->sbuf.pos);
 
   if (rv != 0) {
     return nghttp2_session_terminate_session_with_reason(
@@ -4619,8 +4628,7 @@ static int session_process_ping_frame(nghttp2_session *session) {
   nghttp2_inbound_frame *iframe = &session->iframe;
   nghttp2_frame *frame = &iframe->frame;
 
-  nghttp2_frame_unpack_ping_payload(&frame->ping, iframe->sbuf.pos,
-                                    nghttp2_buf_len(&iframe->sbuf));
+  nghttp2_frame_unpack_ping_payload(&frame->ping, iframe->sbuf.pos);
 
   return nghttp2_session_on_ping_received(session, frame);
 }
@@ -4661,9 +4669,9 @@ static int session_process_goaway_frame(nghttp2_session *session) {
   nghttp2_inbound_frame *iframe = &session->iframe;
   nghttp2_frame *frame = &iframe->frame;
 
-  nghttp2_frame_unpack_goaway_payload(
-      &frame->goaway, iframe->sbuf.pos, nghttp2_buf_len(&iframe->sbuf),
-      iframe->lbuf.pos, nghttp2_buf_len(&iframe->lbuf));
+  nghttp2_frame_unpack_goaway_payload(&frame->goaway, iframe->sbuf.pos,
+                                      iframe->lbuf.pos,
+                                      nghttp2_buf_len(&iframe->lbuf));
 
   nghttp2_buf_wrap_init(&iframe->lbuf, NULL, 0);
 
@@ -4746,8 +4754,8 @@ static int session_process_window_update_frame(nghttp2_session *session) {
   nghttp2_inbound_frame *iframe = &session->iframe;
   nghttp2_frame *frame = &iframe->frame;
 
-  nghttp2_frame_unpack_window_update_payload(
-      &frame->window_update, iframe->sbuf.pos, nghttp2_buf_len(&iframe->sbuf));
+  nghttp2_frame_unpack_window_update_payload(&frame->window_update,
+                                             iframe->sbuf.pos);
 
   return nghttp2_session_on_window_update_received(session, frame);
 }
@@ -5274,6 +5282,10 @@ ssize_t nghttp2_session_mem_recv(nghttp2_session *session, const uint8_t *in,
   rv = nghttp2_session_adjust_idle_stream(session);
   if (nghttp2_is_fatal(rv)) {
     return rv;
+  }
+
+  if (!nghttp2_session_want_read(session)) {
+    return (ssize_t)inlen;
   }
 
   for (;;) {
@@ -6111,7 +6123,7 @@ ssize_t nghttp2_session_mem_recv(nghttp2_session *session, const uint8_t *in,
     case NGHTTP2_IB_FRAME_SIZE_ERROR:
       DEBUGF("recv: [IB_FRAME_SIZE_ERROR]\n");
 
-      rv = session_handle_frame_size_error(session, &iframe->frame);
+      rv = session_handle_frame_size_error(session);
       if (nghttp2_is_fatal(rv)) {
         return rv;
       }
@@ -6596,21 +6608,12 @@ int nghttp2_session_want_write(nghttp2_session *session) {
    * response HEADERS and concurrent stream limit is reached, we don't
    * want to write them.
    */
-
-  if (session->aob.item == NULL &&
-      nghttp2_outbound_queue_top(&session->ob_urgent) == NULL &&
-      nghttp2_outbound_queue_top(&session->ob_reg) == NULL &&
-      (nghttp2_pq_empty(&session->root.obq) ||
-       session->remote_window_size == 0) &&
-      (nghttp2_outbound_queue_top(&session->ob_syn) == NULL ||
-       session_is_outgoing_concurrent_streams_max(session))) {
-    return 0;
-  }
-
-  /* If there is no active streams and GOAWAY has been sent or
-     received, we are done with this session. */
-  return (session->goaway_flags &
-          (NGHTTP2_GOAWAY_SENT | NGHTTP2_GOAWAY_RECV)) == 0;
+  return session->aob.item || nghttp2_outbound_queue_top(&session->ob_urgent) ||
+         nghttp2_outbound_queue_top(&session->ob_reg) ||
+         (!nghttp2_pq_empty(&session->root.obq) &&
+          session->remote_window_size > 0) ||
+         (nghttp2_outbound_queue_top(&session->ob_syn) &&
+          !session_is_outgoing_concurrent_streams_max(session));
 }
 
 int nghttp2_session_add_ping(nghttp2_session *session, uint8_t flags,
@@ -7023,7 +7026,7 @@ int nghttp2_session_resume_data(nghttp2_session *session, int32_t stream_id) {
     return rv;
   }
 
-  return rv;
+  return 0;
 }
 
 size_t nghttp2_session_get_outbound_queue_size(nghttp2_session *session) {
